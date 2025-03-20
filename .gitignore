@@ -1,0 +1,5 @@
+.venv/
+image_store/
+
+__pycache__/
+.DS_Store
