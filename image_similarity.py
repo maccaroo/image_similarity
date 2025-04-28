@@ -1,13 +1,13 @@
-from typing import List
 import base64
 import io
 import time
+from typing import List
 
-from PIL import Image
-from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain.schema import Document
 from langchain.schema.messages import HumanMessage, SystemMessage
 from langchain_chroma import Chroma
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+from PIL import Image
 
 
 class ImageEmbeddingModel:
@@ -18,13 +18,12 @@ class ImageEmbeddingModel:
     def __init__(self, model_name: str = "nomic-embed-text"):
         """
         Initialise the embedding model.
-        
+
         Args:
             model_name: The name of the Ollama model to use for embeddings
         """
         self.embeddings_model = OllamaEmbeddings(model=model_name)
 
-    
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a list of texts."
@@ -36,7 +35,6 @@ class ImageEmbeddingModel:
             A list of lists of embeddings
         """
         return self.embeddings_model.embed_documents(texts)
-    
 
     def embed_query(self, text: str) -> List[float]:
         """
@@ -49,7 +47,6 @@ class ImageEmbeddingModel:
             A list of embeddings
         """
         return self.embeddings_model.embed_query(text)
-
 
 
 class ImageDescriptionGenerator:
@@ -66,7 +63,6 @@ class ImageDescriptionGenerator:
         """
         self.vision_model = ChatOllama(model=model_name)
 
-
     def encode_image(self, image_path: str) -> str:
         """
         Convert an image to a base64-encoded string.
@@ -81,10 +77,6 @@ class ImageDescriptionGenerator:
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
-            buffered = io.BytesIO()
-            img.save(buffered, format="JPEG")
-            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
             # Resize to model constraints - Hard-coded for now
             max_size = 768
             img.thumbnail((max_size, max_size))
@@ -93,7 +85,6 @@ class ImageDescriptionGenerator:
             img.save(buffered, format="JPEG")
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
             return img_str
-    
 
     def generate_descriptions(self, image_path: str) -> str:
         """
@@ -108,11 +99,18 @@ class ImageDescriptionGenerator:
         img_base64 = self.encode_image(image_path)
 
         messages = [
-            SystemMessage(content="You are an AI assistant that provides detailed semantic descriptions of images. Focus on the main subjects, their attributes, actions, relationships, the setting, colors, and any notable visual elements."),
-            HumanMessage(content=[
-                {"type": "image_url", "image_url": img_base64},
-                {"type": "text", "text": "Generate a detailed semantic description of this image. Focus on key visual elements that would be useful for semantic search."}
-            ])
+            SystemMessage(
+                content="You are an AI assistant that provides detailed semantic descriptions of images. Focus on the main subjects, their attributes, actions, relationships, the setting, colors, and any notable visual elements."
+            ),
+            HumanMessage(
+                content=[
+                    {"type": "image_url", "image_url": img_base64},
+                    {
+                        "type": "text",
+                        "text": "Generate a detailed semantic description of this image. Focus on key visual elements that would be useful for semantic search.",
+                    },
+                ]
+            ),
         ]
 
         response = self.vision_model.invoke(messages)
@@ -124,10 +122,12 @@ class ImageStore:
     Store for images and their embeddings
     """
 
-    def __init__(self,
-                 embedding_model: ImageEmbeddingModel,
-                 description_generator: ImageDescriptionGenerator,
-                 persist_directory: str = "image_store"):
+    def __init__(
+        self,
+        embedding_model: ImageEmbeddingModel,
+        description_generator: ImageDescriptionGenerator,
+        persist_directory: str = "image_store",
+    ):
         """
         Initialise the image store.
 
@@ -142,7 +142,7 @@ class ImageStore:
 
         self.vector_store = Chroma(
             persist_directory=persist_directory,
-            embedding_function=self.embedding_model.embeddings_model
+            embedding_function=self.embedding_model.embeddings_model,
         )
 
     def add_image(self, image_path: str) -> str:
@@ -156,18 +156,13 @@ class ImageStore:
             The id of the stored image
         """
         description = self.description_generator.generate_descriptions(image_path)
-        doc = Document(
-            page_content=description,
-            metadata={"image_path": image_path}
-        )
+        doc = Document(page_content=description, metadata={"image_path": image_path})
 
         ids = self.vector_store.add_documents([doc])
         doc_id = ids[0]
 
-        self._save_metadata()
-
         return doc_id
-    
+
     def add_images(self, image_paths: List[str]) -> List[str]:
         """
         Add multiple images to the store.
@@ -183,14 +178,13 @@ class ImageStore:
 
         total_images = len(image_paths)
         for idx, image_path in enumerate(image_paths):
-            print(f"{idx+1}/{total_images} - Generating description for \"{image_path}\"")
+            print(f'{idx+1}/{total_images} - Generating description for "{image_path}"')
             start_time = time.time()
             description = self.description_generator.generate_descriptions(image_path)
             duration = time.time() - start_time
             print(f"Description generated in {duration:.2f} seconds")
             doc = Document(
-                page_content=description,
-                metadata={"image_path": image_path}
+                page_content=description, metadata={"image_path": image_path}
             )
             descriptions.append(description)
             docs.append(doc)
@@ -201,7 +195,20 @@ class ImageStore:
         print("Saving metadata...")
 
         return ids
-    
+
+    def get_image_count(self) -> int:
+        """
+        Get the number of images in the store.
+
+        Returns:
+            The number of images in the store
+        """
+        try:
+            return len(self.vector_store.get()["documents"])
+        except Exception as e:
+            print(f"Error getting image count: {e}")
+            return 0
+
     def search_by_image(self, image_path: str, k: int = 5) -> List[Document]:
         """
         Search for images similar to a given image.
@@ -225,9 +232,10 @@ class ImageStore:
 
 
 def create_image_store(
-        embedding_model_name: str = "nomic-embed-text",
-        vision_model_name: str = "llava",
-        persist_directory: str = "image_store") -> ImageStore:
+    embedding_model_name: str = "nomic-embed-text",
+    vision_model_name: str = "llava",
+    persist_directory: str = "image_store",
+) -> ImageStore:
     """
     Create an image store.
 
@@ -242,6 +250,6 @@ def create_image_store(
     image_store = ImageStore(
         embedding_model=ImageEmbeddingModel(embedding_model_name),
         description_generator=ImageDescriptionGenerator(vision_model_name),
-        persist_directory=persist_directory
+        persist_directory=persist_directory,
     )
     return image_store
