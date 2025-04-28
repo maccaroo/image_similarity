@@ -1,5 +1,12 @@
+# Python
 .venv/
-image_store/
-
 __pycache__/
+
+# OS
 .DS_Store
+ 
+# Environment
+.env
+
+# Application
+image_store/
